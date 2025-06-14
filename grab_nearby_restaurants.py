@@ -6,6 +6,7 @@ import sqlite3
 import logging
 from itertools import product
 from dotenv import load_dotenv
+from typing import List, Dict, Any, Tuple
 
 # .env 読み込み
 load_dotenv()
@@ -27,7 +28,8 @@ if not API_KEY:
 
 STEP = RADIUS * 0.75
 
-def gmaps_get(url: str, params: dict):
+def gmaps_get(url: str, params: dict) -> dict:
+    """Google Maps API へのGETリクエスト（リトライ付き）"""
     for i in range(3):
         try:
             res = requests.get(url, params=params, timeout=10)
@@ -38,14 +40,16 @@ def gmaps_get(url: str, params: dict):
             time.sleep(1)
     raise RuntimeError("Google API へのリクエストに3回失敗しました。")
 
-def move_location(lat: float, lng: float, dx_blocks: int, dy_blocks: int):
+def move_location(lat: float, lng: float, dx_blocks: int, dy_blocks: int) -> Tuple[float, float]:
+    """指定ブロック数だけ緯度経度を移動"""
     d_north = dy_blocks * STEP
     d_east  = dx_blocks * STEP
     d_lat = d_north / 111320
     d_lng = d_east / (111320 * math.cos(math.radians(lat)))
     return lat + d_lat, lng + d_lng
 
-def fetch_places(lat: float, lng: float):
+def fetch_places(lat: float, lng: float) -> List[Dict[str, Any]]:
+    """指定位置の周辺施設を取得"""
     url = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
     params = {
         "location": f"{lat},{lng}",
@@ -69,9 +73,11 @@ def fetch_places(lat: float, lng: float):
     return results
 
 def make_maps_url(place_id: str) -> str:
+    """Google Maps のURL生成"""
     return f"https://www.google.com/maps/place/?q=place_id:{place_id}"
 
-def save_to_db(places, heatmap_points):
+def save_to_db(places: List[Dict[str, Any]]) -> None:
+    """取得した施設情報をDBに保存"""
     conn = sqlite3.connect(DB_FILE)
     cur = conn.cursor()
     cur.execute("""
@@ -86,16 +92,6 @@ def save_to_db(places, heatmap_points):
             last_visited TEXT,
             hidden       INTEGER DEFAULT 0,
             updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS fetch_logs (
-            id     INTEGER PRIMARY KEY AUTOINCREMENT,
-            lat    REAL,
-            lng    REAL,
-            count  INTEGER,
-            radius REAL,
-            fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
 
@@ -118,40 +114,32 @@ def save_to_db(places, heatmap_points):
         except Exception as e:
             logging.warning(f"保存中にエラー: {e}")
 
-    for point in heatmap_points:
-        try:
-            logging.info(f"保存予定: lat={point['lat']}, lng={point['lng']}, count={point['count']}, radius={RADIUS}")
-            cur.execute("""
-                INSERT INTO fetch_logs (lat, lng, count, radius)
-                VALUES (?, ?, ?, ?)
-            """, (point["lat"], point["lng"], point["count"], RADIUS))
-        except Exception as e:
-            logging.warning(f"fetch_logs 保存エラー: {e}")
+    conn.commit()
+    conn.close()
 
-    conn.commit(); conn.close()
+def get_offsets(base_lat: float, base_lng: float, iterations: int) -> List[Tuple[int, int]]:
+    """中心からのオフセットリストを生成"""
+    return [
+        (dx, dy)
+        for dx, dy in product(range(-iterations, iterations + 1), repeat=2)
+        if abs(dx) + abs(dy) <= iterations
+    ]
 
 def main():
     base_lat, base_lng = map(float, LOCATION.split(","))
-
-    offsets = [
-        (dx, dy)
-        for dx, dy in product(range(-ITERATIONS, ITERATIONS + 1), repeat=2)
-        if abs(dx) + abs(dy) <= ITERATIONS
-    ]
+    offsets = get_offsets(base_lat, base_lng, ITERATIONS)
 
     logging.info(f"取得ブロック数: {len(offsets)} (ITERATIONS={ITERATIONS}, RADIUS={RADIUS}m)")
 
     all_places = []
-    heatmap_points = []
     for dx, dy in offsets:
         lat, lng = move_location(base_lat, base_lng, dx, dy)
         logging.info(f"[Block dx={dx}, dy={dy}]")
         places = fetch_places(lat, lng)
         all_places.extend(places)
-        heatmap_points.append({"lat": lat, "lng": lng, "count": len(places)})
 
     unique = {p["place_id"]: p for p in all_places}.values()
-    save_to_db(unique, heatmap_points)
+    save_to_db(list(unique))
 
     logging.info(f"総ユニーク件数: {len(unique)} 件を {DB_FILE} に保存しました。")
 
