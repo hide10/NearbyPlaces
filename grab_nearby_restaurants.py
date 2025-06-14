@@ -135,10 +135,9 @@ def main():
 
     offsets = [
         (dx, dy)
-        for dy, dx in product(range(-ITERATIONS, ITERATIONS + 1), repeat=2)
-        if max(abs(dx), abs(dy)) <= ITERATIONS
+        for dx, dy in product(range(-ITERATIONS, ITERATIONS + 1), repeat=2)
+        if abs(dx) + abs(dy) <= ITERATIONS
     ]
-    offsets.sort(key=lambda t: (abs(t[0]) + abs(t[1]), t[1], t[0]))
 
     logging.info(f"取得ブロック数: {len(offsets)} (ITERATIONS={ITERATIONS}, RADIUS={RADIUS}m)")
 
