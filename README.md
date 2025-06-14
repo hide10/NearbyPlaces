@@ -65,6 +65,21 @@ ITERATIONS=1
 
 指定座標・範囲で「restaurant」カテゴリのプレイス情報を取得し、SQLite DB に格納します。
 
+### Google Places APIの取得上限について
+
+`grab_nearby_restaurants.py` を実行した際に  
+**「この地点で60件以上取得されました。取得漏れの可能性があります。」**  
+という警告が表示された場合は、Google Places APIの仕様により一度に取得できる件数が上限に達している可能性があります。
+
+この場合は、`.env` ファイルの `RADIUS` の値を小さく設定し、検索範囲を狭めて再度実行してください。  
+これにより、1地点あたりの取得件数が減り、漏れなくデータを取得しやすくなります。
+
+例:
+
+```plaintext
+RADIUS=300
+```
+
 ### `generate_heatmap.py`
 
 DB に保存された店舗の位置情報を使って `heatmap.html` を生成します。
