@@ -38,6 +38,7 @@ def get_restaurants(hidden=0):
             "address": row["address"],
             "rating": row["rating"],
             "distance": haversine(base_lat, base_lng, row["lat"], row["lng"]),
+            "drive_time": row["drive_time"],
             "maps_url": row["maps_url"],
             "last_visited": row["last_visited"],
             "updated_at": row["updated_at"]
@@ -116,7 +117,7 @@ INDEX_HTML = """
 <table id="mytable" class="display">
 <thead>
 <tr>
-<th>名前</th><th>住所</th><th>評価</th><th>距離(m)</th><th>最終訪店日</th><th>更新日</th><th>Google Maps</th><th>操作</th>
+<th>名前</th><th>住所</th><th>評価</th><th>距離(m)</th><th>移動時間(分)</th><th>最終訪店日</th><th>更新日</th><th>Google Maps</th><th>操作</th>
 </tr>
 </thead>
 <tbody>
@@ -126,6 +127,7 @@ INDEX_HTML = """
 <td>{{ r['address'] }}</td>
 <td>{{ r['rating'] or '' }}</td>
 <td>{{ "%.0f"|format(r['distance']) }}</td>
+<td>{{ "%.0f"|format((r['drive_time'] or 0)/60) if r['drive_time'] else '' }}</td>
 <td>
   <span class="last-visited-text" data-place-id="{{ r['place_id'] }}">
   {{ r['last_visited'] or '未入力' }}
@@ -191,7 +193,7 @@ RANDOM_HTML = """
 <table border="1">
 <thead>
 <tr>
-<th>名前</th><th>住所</th><th>評価</th><th>距離(m)</th><th>最終訪店日</th><th>更新日</th><th>Google Maps</th><th>操作</th>
+<th>名前</th><th>住所</th><th>評価</th><th>距離(m)</th><th>移動時間(分)</th><th>最終訪店日</th><th>更新日</th><th>Google Maps</th><th>操作</th>
 </tr>
 </thead>
 <tbody>
@@ -201,6 +203,7 @@ RANDOM_HTML = """
 <td>{{ r['address'] }}</td>
 <td>{{ r['rating'] or '' }}</td>
 <td>{{ "%.0f"|format(r['distance']) }}</td>
+<td>{{ "%.0f"|format((r['drive_time'] or 0)/60) if r['drive_time'] else '' }}</td>
 <td>{{ r['last_visited'] or '' }}</td>
 <td>{{ r['updated_at'] or '' }}</td>
 <td><a href="{{ r['maps_url'] }}" target="_blank">地図で見る</a></td>
@@ -232,7 +235,7 @@ HIDDEN_HTML = """
 <table id="hidden_table" class="display">
 <thead>
 <tr>
-<th>名前</th><th>住所</th><th>最終訪店日</th><th>更新日</th><th>Google Maps</th><th>操作</th>
+<th>名前</th><th>住所</th><th>移動時間(分)</th><th>最終訪店日</th><th>更新日</th><th>Google Maps</th><th>操作</th>
 </tr>
 </thead>
 <tbody>
@@ -240,6 +243,7 @@ HIDDEN_HTML = """
 <tr>
 <td>{{ r['name'] }}</td>
 <td>{{ r['address'] }}</td>
+<td>{{ "%.0f"|format((r['drive_time'] or 0)/60) if r['drive_time'] else '' }}</td>
 <td>{{ r['last_visited'] or '' }}</td>
 <td>{{ r['updated_at'] or '' }}</td>
 <td><a href="{{ r['maps_url'] }}" target="_blank">地図で見る</a></td>
