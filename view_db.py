@@ -139,7 +139,7 @@ INDEX_HTML = """
 <td>{{ r['updated_at'] or '' }}</td>
 <td><a href="{{ r['maps_url'] }}" target="_blank">地図で見る</a></td>
 <td>
-  <form method="post" action="{{ url_for('hide', place_id=r['place_id']) }}">
+  <form class="hide-form" method="post" action="{{ url_for('hide', place_id=r['place_id']) }}">
     <button type="submit">非表示</button>
   </form>
 </td>
@@ -152,6 +152,17 @@ INDEX_HTML = """
 <script>
 $(document).ready(function() {
     $('#mytable').DataTable({ "pageLength": -1 });
+
+    // 非表示ボタンのAjax化
+    $('.hide-form').on('submit', function(e){
+        e.preventDefault();
+        var $row = $(this).closest('tr');
+        var actionUrl = $(this).attr('action');
+        $.post(actionUrl, function(){
+            // 行を非表示にする
+            $row.fadeOut(300, function(){ $(this).remove(); });
+        });
+    });
 });
 $(function(){
   $('.last-visited-text').on('click', function(){
@@ -194,7 +205,7 @@ RANDOM_HTML = """
 <td>{{ r['updated_at'] or '' }}</td>
 <td><a href="{{ r['maps_url'] }}" target="_blank">地図で見る</a></td>
 <td>
-  <form method="post" action="{{ url_for('hide', place_id=r['place_id']) }}">
+  <form class="hide-form" method="post" action="{{ url_for('hide', place_id=r['place_id']) }}">
     <button type="submit">非表示</button>
   </form>
 </td>
