@@ -10,6 +10,7 @@ app = Flask(__name__)
 def index():
     db = os.getenv("DB_FILE", "restaurants.db")
     location_str = os.getenv("LOCATION", "35.681236,139.767125")
+    radius = float(os.getenv("RADIUS", "500"))
     base_lat, base_lng = map(float, location_str.split(","))
 
     conn = sqlite3.connect(db)
@@ -19,7 +20,14 @@ def index():
     data = [{"lat": row["lat"], "lng": row["lng"], "count": row["count"]} for row in c.fetchall()]
     conn.close()
 
-    return render_template("heatmap.html", heatmap_data=data, base_lat=base_lat, base_lng=base_lng, api_key=os.getenv("GMAPS_API_KEY"))
+    return render_template(
+        "heatmap.html",
+        heatmap_data=data,
+        base_lat=base_lat,
+        base_lng=base_lng,
+        api_key=os.getenv("GMAPS_API_KEY"),
+        radius=radius
+    )
 
 if __name__ == "__main__":
     app.run(debug=True)

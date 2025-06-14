@@ -17,25 +17,27 @@
       function initMap() {
         const center = { lat: {{ base_lat }}, lng: {{ base_lng }} };
         const map = new google.maps.Map(document.getElementById("map"), {
-          zoom: 14,
+          zoom: 15,
           center: center,
           mapTypeId: "roadmap"
         });
 
-        const maxCount = Math.max(...locations.map(loc => loc.count || 0));
+        const maxCount = Math.max(...locations.map(loc => loc.count || 1));
 
         const heatmapData = locations.map(loc => {
-          const weight = loc.count ? loc.count / maxCount : 0.01;
-          console.log(`lat: ${loc.lat}, lng: ${loc.lng}, count: ${loc.count}, weight: ${weight}`);
+          const latLng = new google.maps.LatLng(loc.lat, loc.lng);
+          const normalizedWeight = (loc.count || 1) / maxCount;
           return {
-            location: new google.maps.LatLng(loc.lat, loc.lng),
-            weight: weight
+            location: latLng,
+            weight: normalizedWeight
           };
         });
 
         const heatmap = new google.maps.visualization.HeatmapLayer({
           data: heatmapData,
-          radius: 40
+          radius: 50,
+          opacity: 0.7,
+          maxIntensity: 1.0
         });
         heatmap.setMap(map);
       }

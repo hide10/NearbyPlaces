@@ -1,10 +1,3 @@
-"""
-近所の飲食店情報を SQLite DB に保存するスクリプト
-取得範囲を“中心点から半径 R だけ移動したブロック”で繰り返し取得できるように拡張。
-ITERATIONS=1 → 中心+四方の1ブロック（合計5地点）
-ITERATIONS=2 → 添付画像の 1〜13 のように、縦横2ブロックまでをカバー（合計25地点）
-"""
-
 import os
 import time
 import math
@@ -32,11 +25,9 @@ ITERATIONS = int(os.getenv("ITERATIONS", "1"))
 if not API_KEY:
     raise RuntimeError("APIキーが設定されていません。環境変数 GMAPS_API_KEY を確認してください。")
 
-# ブロック間の移動ステップ（75%重ねて取得範囲の抜けを防ぐ）
 STEP = RADIUS * 0.75
 
 def gmaps_get(url: str, params: dict):
-    """最大3回のリトライ付きで JSON を返す"""
     for i in range(3):
         try:
             res = requests.get(url, params=params, timeout=10)
@@ -47,12 +38,9 @@ def gmaps_get(url: str, params: dict):
             time.sleep(1)
     raise RuntimeError("Google API へのリクエストに3回失敗しました。")
 
-# ---------------- 位置計算 ----------------
-
 def move_location(lat: float, lng: float, dx_blocks: int, dy_blocks: int):
-    """ブロック単位のオフセットを緯度経度に変換"""
-    d_north = dy_blocks * STEP  # +y は北（緯度正方向）
-    d_east  = dx_blocks * STEP  # +x は東（経度正方向）
+    d_north = dy_blocks * STEP
+    d_east  = dx_blocks * STEP
     d_lat = d_north / 111320
     d_lng = d_east / (111320 * math.cos(math.radians(lat)))
     return lat + d_lat, lng + d_lng
@@ -77,7 +65,7 @@ def fetch_places(lat: float, lng: float):
         params = {"pagetoken": token, "key": API_KEY}
     logging.info(f"  › {lat:.6f},{lng:.6f} → {len(results)} 件")
     if len(results) >= 60:
-        logging.warning("  ※ この地点で60件以上取得されました。取得漏れの可能性があります。RADIUSやSTEPを見直してください。")
+        logging.warning("  ＊ この地点で60件以上取得されました。取得漏れの可能性があります。")
     return results
 
 def make_maps_url(place_id: str) -> str:
@@ -106,6 +94,7 @@ def save_to_db(places, heatmap_points):
             lat    REAL,
             lng    REAL,
             count  INTEGER,
+            radius REAL,
             fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -131,9 +120,11 @@ def save_to_db(places, heatmap_points):
 
     for point in heatmap_points:
         try:
-            logging.info(f"保存予定: lat={point['lat']}, lng={point['lng']}, count={point['count']}")
-            cur.execute("INSERT INTO fetch_logs (lat, lng, count) VALUES (?, ?, ?)",
-                        (point["lat"], point["lng"], point["count"]))
+            logging.info(f"保存予定: lat={point['lat']}, lng={point['lng']}, count={point['count']}, radius={RADIUS}")
+            cur.execute("""
+                INSERT INTO fetch_logs (lat, lng, count, radius)
+                VALUES (?, ?, ?, ?)
+            """, (point["lat"], point["lng"], point["count"], RADIUS))
         except Exception as e:
             logging.warning(f"fetch_logs 保存エラー: {e}")
 
@@ -142,13 +133,11 @@ def save_to_db(places, heatmap_points):
 def main():
     base_lat, base_lng = map(float, LOCATION.split(","))
 
-    # ブロックオフセット生成 (マンハッタン距離 <= ITERATIONS)
     offsets = [
         (dx, dy)
         for dy, dx in product(range(-ITERATIONS, ITERATIONS + 1), repeat=2)
         if max(abs(dx), abs(dy)) <= ITERATIONS
     ]
-    # 中心からの距離でソートして“スパイラル”順に取得（見た目重視）
     offsets.sort(key=lambda t: (abs(t[0]) + abs(t[1]), t[1], t[0]))
 
     logging.info(f"取得ブロック数: {len(offsets)} (ITERATIONS={ITERATIONS}, RADIUS={RADIUS}m)")
