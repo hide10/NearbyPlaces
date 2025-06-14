@@ -1,126 +1,84 @@
-# Nearby Restaurant Viewer 🍽
+# grab_nearby_restaurants
 
-Google Maps API を使って自宅周辺の飲食店情報を取得し、SQLite に保存。  
-Flask ビューアで一覧・編集・ランダム表示・非表示切替ができるローカルアプリです。
+Google Maps API を利用して、指定エリアの飲食店情報を取得し、ヒートマップや一覧表示を可能にするツールセットです。
 
----
+## 概要
 
-## 📦 構成ファイル
+このプロジェクトは以下の機能を提供します：
 
-| ファイル名 | 内容 |
-|------------|------|
-| `grab_nearby_restaurants.py` | Google Places API を使って飲食店情報を取得し、SQLite に保存 |
-| `view_db.py` | Flask ビューア本体（表示・編集・非表示処理） |
-| `.env` | 各種設定（APIキー、座標、DBファイル名など） |
+- Google Maps API から「restaurant」情報を取得し、SQLite データベースに保存
+- 取得済みデータをもとにヒートマップを生成
+- 自作ビュアーで駅前飲食店の一覧を閲覧可能
 
----
+## 使用技術
 
-## 🛠 必要な環境
+- Python 3
+- Google Maps Places API, Geocoding API
+- SQLite
+- Folium（ヒートマップ生成用）
+- Flask（任意でビュアーに拡張可）
 
-- Python 3.7 以上
-- Google Cloud Platform アカウント
-- `pip install -r requirements.txt`
+## APIキーの取得手順
 
-```text
-requests
-python-dotenv
-flask
+1. Google Cloud Console にアクセス  
+   https://console.cloud.google.com/
+
+2. プロジェクトを作成（または既存のプロジェクトを選択）
+
+3. 左側メニューから「API とサービス」→「ライブラリ」を選択
+
+4. 以下の API を有効化：
+   - **Places API**
+
+5. 左メニューの「認証情報」→「APIキーを作成」をクリック
+
+6. 発行されたキーを `.env` ファイルに記述：
+   ```
+   GMAPS_API_KEY=発行されたキーをここに貼り付け
+   ```
+
+7. 必要に応じて「制限」タブから使用APIの制限を設定（セキュリティ向上のため推奨）
+
+## セットアップ
+
+1. 必要ライブラリのインストール
+
+```
+pip install -r requirements.txt
 ```
 
----
+2. `.env` ファイルをプロジェクトルートに作成し、以下のように記述：
 
-## 🔐 `.env` 設定例
-
-プロジェクトフォルダに `.env` ファイルを作成し、以下のように記述：
-
-```env
-GMAPS_API_KEY=あなたのAPIキー
-LOCATION=35.6895,139.6917
+```
+GMAPS_API_KEY=your_api_key_here
+LOCATION=35.681236,139.767125
 RADIUS=500
 TYPE=restaurant
 LANG=ja
 DB_FILE=restaurants.db
+ITERATIONS=1
 ```
 
----
+## スクリプト概要
 
-## 🔑 APIキーの取得手順（Places API）
+### `grab_nearby_restaurants.py`
 
-1. [Google Cloud Console](https://console.cloud.google.com/) にアクセス
-2. プロジェクトを作成（例：NearbyPlaces）
-3. 「APIとサービス」→「ライブラリ」→「Places API」を検索＆有効化
-4. 「認証情報」→「APIキーを作成」
-5. `.env` の `GMAPS_API_KEY` に貼り付け
+指定座標・範囲で「restaurant」カテゴリのプレイス情報を取得し、SQLite DB に格納します。
 
-> ※課金アカウントの設定が必要です。無料枠あり。
+### `generate_heatmap.py`
 
----
+DB に保存された店舗の位置情報を使って `heatmap.html` を生成します。
 
-## 🚀 データ取得方法（近所の飲食店を保存）
+### `view_db.py`
 
-```bash
-python grab_nearby_restaurants.py
-```
+DB 内の店舗情報を駅名などの条件でフィルタし、一覧として標準出力に表示します。
 
-実行すると `.env` で指定した半径内の飲食店が取得され、SQLite DB（例：`restaurants.db`）に保存されます。  
-既存レコードは `place_id` をもとに重複を避け、`rating` 更新時は `updated_at` も更新されます。
+### `heatmap.html`
 
----
+生成されたヒートマップ。ブラウザで開くと視覚的に店舗の密集度を確認できます。
 
-## 👀 ビューア起動方法（Flask）
+## 注意事項
 
-```bash
-python view_db.py
-```
+- Google Maps API の利用には料金が発生する場合があります（無料枠あり）
+- APIキーの漏洩に注意してください（`.env` は `.gitignore` に含まれています）
 
-起動後、`http://localhost:5000` にアクセスすると一覧画面が表示されます。
-
----
-
-## 📋 ビューア機能
-
-- ✅ 一覧表示（評価、距離、訪問日、更新日など）
-- 🖋 最終訪店日の直接編集
-- 🎲 ランダム3件の抽出表示
-- 🚫 一時非表示 → ✅ 再表示切替
-- 📏 距離計算は `.env` の `LOCATION` を基準に Haversine で算出
-
----
-
-## 📁 DBスキーマ概要（SQLite）
-
-| カラム名 | 説明 |
-|----------|------|
-| `place_id` | Googleの店舗ID（主キー） |
-| `name` | 店名 |
-| `address` | 住所 |
-| `lat`, `lng` | 緯度経度 |
-| `rating` | 評価（最大5.0） |
-| `maps_url` | Googleマップリンク |
-| `last_visited` | 手動で入力可能な訪問日（`YYYY-MM-DD`） |
-| `hidden` | 非表示フラグ（0:表示中、1:非表示） |
-| `updated_at` | Google情報の最終取得・更新時刻（自動更新） |
-
----
-
-## 🧠 拡張案（必要に応じて）
-
-- `genre` 列追加（店名キーワードから居酒屋・中華などを推定）
-- `price_level`, `opening_hours` の取得と保存
-- Map表示（folium / leaflet.js）との連携
-- Web UIの分離（Jinjaテンプレート化、JSモジュール分離）
-
----
-
-## 🐾 作者
-
-hide10
-> Embedded Software Developer｜Pythonでおいしい街を探索中  
-> Blog: [https://www.hide10.com](https://www.hide10.com)
-
----
-
-## 🧯 注意点
-
-- Google APIには無料枠・課金枠の制限があります。**使いすぎ注意！**
-- `.env` ファイルは `.gitignore` に追加して **絶対に公開しない**ようにしてください
