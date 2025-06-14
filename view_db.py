@@ -79,8 +79,12 @@ def unhide(place_id):
 def update_last_visited(place_id):
     last_visited = request.form.get("last_visited")
     conn = sqlite3.connect(DB_FILE)
-    conn.execute("UPDATE restaurants SET last_visited=? WHERE place_id=?", (last_visited, place_id))
-    conn.commit(); conn.close()
+    conn.execute(
+        "UPDATE restaurants SET last_visited=?, updated_at=datetime('now', 'localtime') WHERE place_id=?",
+        (last_visited, place_id)
+    )
+    conn.commit()
+    conn.close()
     return redirect(url_for('index'))
 
 # 一覧表示用
@@ -91,6 +95,17 @@ INDEX_HTML = """
 <meta charset="UTF-8">
 <title>レストラン一覧</title>
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+<style>
+.last-visited-text {
+  display: inline-block;
+  min-width: 60px;
+  min-height: 1.5em;
+  cursor: pointer;
+  background: #f0f0f0;
+  border-radius: 3px;
+  padding: 2px 4px;
+}
+</style>
 </head>
 <body>
 <h2>レストラン一覧</h2>
@@ -112,7 +127,9 @@ INDEX_HTML = """
 <td>{{ r['rating'] or '' }}</td>
 <td>{{ "%.0f"|format(r['distance']) }}</td>
 <td>
-  <span class="last-visited-text" data-place-id="{{ r['place_id'] }}">{{ r['last_visited'] or '' }}</span>
+  <span class="last-visited-text" data-place-id="{{ r['place_id'] }}">
+  {{ r['last_visited'] or '未入力' }}
+</span>
   <form class="last-visited-form" method="post" action="{{ url_for('update_last_visited', place_id=r['place_id']) }}" style="display:none;">
     <input type="date" name="last_visited" value="{{ r['last_visited'] or '' }}">
     <button type="submit">保存</button>
