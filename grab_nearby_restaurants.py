@@ -21,21 +21,19 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 # 環境変数の読み込み
-API_KEY   = os.getenv("GMAPS_API_KEY")
-LOCATION  = os.getenv("LOCATION")                # "lat,lng"
-RADIUS    = float(os.getenv("RADIUS", "500"))   # 1ブロックの半径[m]
-TYPE      = os.getenv("TYPE", "restaurant")
-LANG      = os.getenv("LANG", "ja")
-DB_FILE   = os.getenv("DB_FILE", "restaurants.db")
-ITERATIONS = int(os.getenv("ITERATIONS", "1"))  # 取得回数（同心ブロック数）
+API_KEY    = os.getenv("GMAPS_API_KEY")
+LOCATION   = os.getenv("LOCATION")
+RADIUS     = float(os.getenv("RADIUS", "500"))
+TYPE       = os.getenv("TYPE", "restaurant")
+LANG       = os.getenv("LANG", "ja")
+DB_FILE    = os.getenv("DB_FILE", "restaurants.db")
+ITERATIONS = int(os.getenv("ITERATIONS", "1"))
 
 if not API_KEY:
     raise RuntimeError("APIキーが設定されていません。環境変数 GMAPS_API_KEY を確認してください。")
 
 # ブロック間の移動ステップ（75%重ねて取得範囲の抜けを防ぐ）
 STEP = RADIUS * 0.75
-
-# ---------------- Google API helper ----------------
 
 def gmaps_get(url: str, params: dict):
     """最大3回のリトライ付きで JSON を返す"""
@@ -58,8 +56,6 @@ def move_location(lat: float, lng: float, dx_blocks: int, dy_blocks: int):
     d_lat = d_north / 111320
     d_lng = d_east / (111320 * math.cos(math.radians(lat)))
     return lat + d_lat, lng + d_lng
-
-# ---------------- Places API 呼び出し ----------------
 
 def fetch_places(lat: float, lng: float):
     url = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
@@ -84,12 +80,10 @@ def fetch_places(lat: float, lng: float):
         logging.warning("  ※ この地点で60件以上取得されました。取得漏れの可能性があります。RADIUSやSTEPを見直してください。")
     return results
 
-# ---------------- DB 保存 ----------------
-
 def make_maps_url(place_id: str) -> str:
     return f"https://www.google.com/maps/place/?q=place_id:{place_id}"
 
-def save_to_db(places):
+def save_to_db(places, heatmap_points):
     conn = sqlite3.connect(DB_FILE)
     cur = conn.cursor()
     cur.execute("""
@@ -106,6 +100,16 @@ def save_to_db(places):
             updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS fetch_logs (
+            id     INTEGER PRIMARY KEY AUTOINCREMENT,
+            lat    REAL,
+            lng    REAL,
+            count  INTEGER,
+            fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
     for p in places:
         try:
             pid    = p.get("place_id")
@@ -124,9 +128,16 @@ def save_to_db(places):
             """, (pid, name, addr, lat, lng, rating, url))
         except Exception as e:
             logging.warning(f"保存中にエラー: {e}")
-    conn.commit(); conn.close()
 
-# ---------------- メイン ----------------
+    for point in heatmap_points:
+        try:
+            logging.info(f"保存予定: lat={point['lat']}, lng={point['lng']}, count={point['count']}")
+            cur.execute("INSERT INTO fetch_logs (lat, lng, count) VALUES (?, ?, ?)",
+                        (point["lat"], point["lng"], point["count"]))
+        except Exception as e:
+            logging.warning(f"fetch_logs 保存エラー: {e}")
+
+    conn.commit(); conn.close()
 
 def main():
     base_lat, base_lng = map(float, LOCATION.split(","))
@@ -143,13 +154,17 @@ def main():
     logging.info(f"取得ブロック数: {len(offsets)} (ITERATIONS={ITERATIONS}, RADIUS={RADIUS}m)")
 
     all_places = []
+    heatmap_points = []
     for dx, dy in offsets:
         lat, lng = move_location(base_lat, base_lng, dx, dy)
         logging.info(f"[Block dx={dx}, dy={dy}]")
-        all_places.extend(fetch_places(lat, lng))
+        places = fetch_places(lat, lng)
+        all_places.extend(places)
+        heatmap_points.append({"lat": lat, "lng": lng, "count": len(places)})
 
     unique = {p["place_id"]: p for p in all_places}.values()
-    save_to_db(unique)
+    save_to_db(unique, heatmap_points)
+
     logging.info(f"総ユニーク件数: {len(unique)} 件を {DB_FILE} に保存しました。")
 
 if __name__ == "__main__":

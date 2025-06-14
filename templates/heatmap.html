@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>ヒートマップ表示</title>
+    <meta name="viewport" content="initial-scale=1.0">
+    <meta charset="utf-8">
+    <style>
+      #map {
+        height: 100vh;
+        width: 100%;
+      }
+    </style>
+    <script src="https://maps.googleapis.com/maps/api/js?key={{ api_key }}&libraries=visualization"></script>
+    <script>
+      const locations = {{ heatmap_data | safe }};
+
+      function initMap() {
+        const center = { lat: {{ base_lat }}, lng: {{ base_lng }} };
+        const map = new google.maps.Map(document.getElementById("map"), {
+          zoom: 14,
+          center: center,
+          mapTypeId: "roadmap"
+        });
+
+        const maxCount = Math.max(...locations.map(loc => loc.count || 0));
+
+        const heatmapData = locations.map(loc => {
+          const weight = loc.count ? loc.count / maxCount : 0.01;
+          console.log(`lat: ${loc.lat}, lng: ${loc.lng}, count: ${loc.count}, weight: ${weight}`);
+          return {
+            location: new google.maps.LatLng(loc.lat, loc.lng),
+            weight: weight
+          };
+        });
+
+        const heatmap = new google.maps.visualization.HeatmapLayer({
+          data: heatmapData,
+          radius: 40
+        });
+        heatmap.setMap(map);
+      }
+    </script>
+  </head>
+  <body onload="initMap()">
+    <div id="map"></div>
+  </body>
+</html>
