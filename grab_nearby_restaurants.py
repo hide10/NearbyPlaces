@@ -28,10 +28,12 @@ TYPE      = os.getenv("TYPE", "restaurant")
 LANG      = os.getenv("LANG", "ja")
 DB_FILE   = os.getenv("DB_FILE", "restaurants.db")
 ITERATIONS = int(os.getenv("ITERATIONS", "1"))  # 取得回数（同心ブロック数）
-STEP = RADIUS * 0.75
 
 if not API_KEY:
     raise RuntimeError("APIキーが設定されていません。環境変数 GMAPS_API_KEY を確認してください。")
+
+# ブロック間の移動ステップ（75%重ねて取得範囲の抜けを防ぐ）
+STEP = RADIUS * 0.75
 
 # ---------------- Google API helper ----------------
 
@@ -78,6 +80,8 @@ def fetch_places(lat: float, lng: float):
         time.sleep(2)
         params = {"pagetoken": token, "key": API_KEY}
     logging.info(f"  › {lat:.6f},{lng:.6f} → {len(results)} 件")
+    if len(results) >= 60:
+        logging.warning("  ※ この地点で60件以上取得されました。取得漏れの可能性があります。RADIUSやSTEPを見直してください。")
     return results
 
 # ---------------- DB 保存 ----------------
