@@ -13,7 +13,7 @@ Google Maps API を利用して、指定エリアの飲食店情報を取得し�
 ## 使用技術
 
 - Python 3
-- Google Maps Places API, Geocoding API
+- Google Maps Places API, Geocoding API, Distance Matrix API
 - SQLite
 - Folium（ヒートマップ生成用）
 - Flask（任意でビュアーに拡張可）
@@ -29,6 +29,7 @@ Google Maps API を利用して、指定エリアの飲食店情報を取得し�
 
 4. 以下の API を有効化：
    - **Places API**
+   - **Distance Matrix API**
 
 5. 左メニューの「認証情報」→「APIキーを作成」をクリック
 
@@ -59,11 +60,13 @@ DB_FILE=restaurants.db
 ITERATIONS=1
 ```
 
+このキーは Places API と Distance Matrix API の両方に使用されます。
+
 ## スクリプト概要
 
 ### `grab_nearby_restaurants.py`
 
-指定座標・範囲で「restaurant」カテゴリのプレイス情報を取得し、SQLite DB に格納します。
+指定座標・範囲で「restaurant」カテゴリのプレイス情報を取得し、SQLite DB に格納します。各店舗への車での移動時間を Distance Matrix API から取得し、`drive_time` 列として保存します。
 
 ### Google Places APIの取得上限について
 

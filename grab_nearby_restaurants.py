@@ -76,6 +76,30 @@ def make_maps_url(place_id: str) -> str:
     """Google Maps のURL生成"""
     return f"https://www.google.com/maps/place/?q=place_id:{place_id}"
 
+def fetch_drive_time(dest_lat: float, dest_lng: float) -> int | None:
+    """指定地点まで車で移動した際の所要時間(秒)を取得"""
+    url = "https://maps.googleapis.com/maps/api/distancematrix/json"
+    params = {
+        "origins": LOCATION,
+        "destinations": f"{dest_lat},{dest_lng}",
+        "mode": "driving",
+        "language": LANG,
+        "key": API_KEY,
+    }
+    try:
+        data = gmaps_get(url, params)
+        if data.get("status") != "OK":
+            logging.warning(f"Distance Matrix status: {data.get('status')}")
+            return None
+        element = data["rows"][0]["elements"][0]
+        if element.get("status") != "OK":
+            logging.warning(f"Element status: {element.get('status')}")
+            return None
+        return element.get("duration", {}).get("value")
+    except Exception as e:
+        logging.warning(f"距離計算に失敗: {e}")
+        return None
+
 def save_to_db(places: List[Dict[str, Any]]) -> None:
     """取得した施設情報をDBに保存"""
     conn = sqlite3.connect(DB_FILE)
@@ -91,9 +115,16 @@ def save_to_db(places: List[Dict[str, Any]]) -> None:
             maps_url     TEXT,
             last_visited TEXT,
             hidden       INTEGER DEFAULT 0,
+            drive_time   INTEGER,
             updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
+
+    # 既存DBにdrive_time列が無い場合は追加
+    cur.execute("PRAGMA table_info(restaurants)")
+    cols = [r[1] for r in cur.fetchall()]
+    if "drive_time" not in cols:
+        cur.execute("ALTER TABLE restaurants ADD COLUMN drive_time INTEGER")
 
     for p in places:
         try:
@@ -104,13 +135,17 @@ def save_to_db(places: List[Dict[str, Any]]) -> None:
             lng    = p["geometry"]["location"]["lng"]
             rating = p.get("rating")
             url    = make_maps_url(pid)
+            drive  = fetch_drive_time(lat, lng)
+            time.sleep(0.1)  # API使用量を抑える
             cur.execute("""
-                INSERT INTO restaurants (place_id, name, address, lat, lng, rating, maps_url)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO restaurants (
+                    place_id, name, address, lat, lng, rating, maps_url, drive_time
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(place_id) DO UPDATE SET
                     rating=excluded.rating,
+                    drive_time=excluded.drive_time,
                     updated_at=CURRENT_TIMESTAMP
-            """, (pid, name, addr, lat, lng, rating, url))
+            """, (pid, name, addr, lat, lng, rating, url, drive))
         except Exception as e:
             logging.warning(f"保存中にエラー: {e}")
 
