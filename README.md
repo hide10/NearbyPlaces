@@ -6,7 +6,7 @@ Google Maps API を利用して、指定エリアの飲食店情報を取得し�
 
 このプロジェクトは以下の機能を提供します：
 
-- Google Maps API から「restaurant」情報を取得し、SQLite データベースに保存
+- Google Maps API から指定した種類のプレイス情報を取得し、SQLite データベースに保存
 - 取得済みデータをもとにヒートマップを生成
 - 自作ビュアーで駅前飲食店の一覧を閲覧可能
 
@@ -54,7 +54,8 @@ pip install -r requirements.txt
 GMAPS_API_KEY=your_api_key_here
 LOCATION=35.681236,139.767125
 RADIUS=500
-TYPE=restaurant
+# 複数指定する場合はカンマ区切りで記載
+TYPE=restaurant,cafe
 LANG=ja
 DB_FILE=restaurants.db
 ITERATIONS=1
@@ -66,7 +67,7 @@ ITERATIONS=1
 
 ### `grab_nearby_restaurants.py`
 
-指定座標・範囲で「restaurant」カテゴリのプレイス情報を取得し、SQLite DB に格納します。各店舗への車での移動時間を Distance Matrix API から取得し、`drive_time` 列として保存します。
+指定座標・範囲で `.env` の `TYPE` で指定したカテゴリのプレイス情報を取得し、SQLite DB に格納します。各店舗への車での移動時間を Distance Matrix API から取得し、`drive_time` 列として保存します。
 
 ### Google Places APIの取得上限について
 
@@ -89,9 +90,8 @@ DB に保存された店舗の位置情報を使って `heatmap.html` を生成�
 
 ### `view_db.py`
 
-Flask で動作する簡易ビューア。`drive_time` (車での移動時間) を分単位で指定し、
-その時間以内の店舗のみを一覧表示できます。また、この絞り込み条件を保ったまま
-ランダムに 3 件を表示する機能も備えています。
+Flask で動作する簡易ビューア。`drive_time` (車での移動時間) のほか、保存時に付与した `type` での絞り込みも可能です。
+条件を指定したままランダムに 3 件を表示する機能も備えています。
 
 ## view_db.py の使い方（詳細）
 
@@ -116,8 +116,8 @@ Flask で動作する簡易ビューア。`drive_time` (車での移動時間) �
 ### 主な機能
 
 - **レストラン一覧表示**  
-  登録済みレストランが一覧で表示されます。  
-  「最大移動時間(分)」で絞り込みも可能です。
+  登録済みレストランが一覧で表示されます。
+  「最大移動時間(分)」や「タイプ」で絞り込みが可能です。
 
 - **ランダム3件表示**  
   「ランダムに3件表示」ボタンで、条件に合うレストランから3件をランダム表示します。

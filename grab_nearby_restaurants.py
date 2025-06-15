@@ -18,7 +18,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 API_KEY    = os.getenv("GMAPS_API_KEY")
 LOCATION   = os.getenv("LOCATION")
 RADIUS     = float(os.getenv("RADIUS", "500"))
-TYPE       = os.getenv("TYPE", "restaurant")
+# 複数タイプをカンマ区切り(またはセミコロン区切り)で指定可能にする
+_types_env = os.getenv("TYPE", "restaurant").replace(";", ",")
+TYPES      = [t.strip() for t in _types_env.split(",") if t.strip()]
 LANG       = os.getenv("LANG", "ja")
 DB_FILE    = os.getenv("DB_FILE", "restaurants.db")
 ITERATIONS = int(os.getenv("ITERATIONS", "1"))
@@ -48,26 +50,29 @@ def move_location(lat: float, lng: float, dx_blocks: int, dy_blocks: int) -> Tup
     d_lng = d_east / (111320 * math.cos(math.radians(lat)))
     return lat + d_lat, lng + d_lng
 
-def fetch_places(lat: float, lng: float) -> List[Dict[str, Any]]:
+def fetch_places(lat: float, lng: float, place_type: str) -> List[Dict[str, Any]]:
     """指定位置の周辺施設を取得"""
     url = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
     params = {
         "location": f"{lat},{lng}",
         "radius": int(RADIUS),
-        "type": TYPE,
+        "type": place_type,
         "language": LANG,
         "key": API_KEY
     }
     results = []
     while True:
         data = gmaps_get(url, params)
-        results.extend(data.get("results", []))
+        batch = data.get("results", [])
+        for r in batch:
+            r["search_type"] = place_type
+        results.extend(batch)
         token = data.get("next_page_token")
         if not token:
             break
         time.sleep(2)
         params = {"pagetoken": token, "key": API_KEY}
-    logging.info(f"  › {lat:.6f},{lng:.6f} → {len(results)} 件")
+    logging.info(f"  › {lat:.6f},{lng:.6f} [{place_type}] → {len(results)} 件")
     if len(results) >= 60:
         logging.warning("  ＊ この地点で60件以上取得されました。取得漏れの可能性があります。")
     return results
@@ -116,15 +121,18 @@ def save_to_db(places: List[Dict[str, Any]]) -> None:
             last_visited TEXT,
             hidden       INTEGER DEFAULT 0,
             drive_time   INTEGER,
+            type         TEXT,
             updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
 
-    # 既存DBにdrive_time列が無い場合は追加
+    # 既存DBにカラムが無い場合は追加
     cur.execute("PRAGMA table_info(restaurants)")
     cols = [r[1] for r in cur.fetchall()]
     if "drive_time" not in cols:
         cur.execute("ALTER TABLE restaurants ADD COLUMN drive_time INTEGER")
+    if "type" not in cols:
+        cur.execute("ALTER TABLE restaurants ADD COLUMN type TEXT")
 
     for p in places:
         try:
@@ -137,15 +145,19 @@ def save_to_db(places: List[Dict[str, Any]]) -> None:
             url    = make_maps_url(pid)
             drive  = fetch_drive_time(lat, lng)
             time.sleep(0.1)  # API使用量を抑える
-            cur.execute("""
+            ptype  = p.get("search_type")
+            cur.execute(
+                """
                 INSERT INTO restaurants (
-                    place_id, name, address, lat, lng, rating, maps_url, drive_time
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    place_id, name, address, lat, lng, rating, maps_url, drive_time, type
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(place_id) DO UPDATE SET
                     rating=excluded.rating,
                     drive_time=excluded.drive_time,
                     updated_at=CURRENT_TIMESTAMP
-            """, (pid, name, addr, lat, lng, rating, url, drive))
+                """,
+                (pid, name, addr, lat, lng, rating, url, drive, ptype),
+            )
         except Exception as e:
             logging.warning(f"保存中にエラー: {e}")
 
@@ -169,12 +181,17 @@ def main():
     all_places = []
     for dx, dy in offsets:
         lat, lng = move_location(base_lat, base_lng, dx, dy)
-        logging.info(f"[Block dx={dx}, dy={dy}]")
-        places = fetch_places(lat, lng)
-        all_places.extend(places)
+        for t in TYPES:
+            logging.info(f"[Block dx={dx}, dy={dy}, type={t}]")
+            places = fetch_places(lat, lng, t)
+            all_places.extend(places)
 
-    unique = {p["place_id"]: p for p in all_places}.values()
-    save_to_db(list(unique))
+    unique = {}
+    for p in all_places:
+        if p["place_id"] not in unique:
+            unique[p["place_id"]] = p
+
+    save_to_db(list(unique.values()))
 
     logging.info(f"総ユニーク件数: {len(unique)} 件を {DB_FILE} に保存しました。")
 
