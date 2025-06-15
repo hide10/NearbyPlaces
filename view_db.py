@@ -24,17 +24,28 @@ def haversine(lat1, lng1, lat2, lng2):
     c = 2 * asin(sqrt(a))
     return R * c * 1000
 
-def get_restaurants(hidden=0, max_drive_time=None):
+def get_types():
+    """登録されているタイプ一覧を取得"""
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT DISTINCT type FROM restaurants ORDER BY type")
+    types = [row[0] for row in c.fetchall() if row[0]]
+    conn.close()
+    return types
+
+def get_restaurants(hidden=0, max_drive_time=None, place_type=None):
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
+    query = "SELECT * FROM restaurants WHERE hidden=?"
+    params = [hidden]
+    if place_type:
+        query += " AND type=?"
+        params.append(place_type)
     if max_drive_time is not None:
-        c.execute(
-            "SELECT * FROM restaurants WHERE hidden=? AND (drive_time IS NULL OR drive_time<=?)",
-            (hidden, max_drive_time),
-        )
-    else:
-        c.execute("SELECT * FROM restaurants WHERE hidden=?", (hidden,))
+        query += " AND (drive_time IS NULL OR drive_time<=?)"
+        params.append(max_drive_time)
+    c.execute(query, params)
     rows = c.fetchall()
     conn.close()
     return [
@@ -47,6 +58,7 @@ def get_restaurants(hidden=0, max_drive_time=None):
             "drive_time": row["drive_time"],
             "maps_url": row["maps_url"],
             "last_visited": row["last_visited"],
+            "type": row["type"],
             "updated_at": row["updated_at"]
         }
         for row in rows
@@ -55,28 +67,31 @@ def get_restaurants(hidden=0, max_drive_time=None):
 @app.route("/")
 def index():
     drive_time = request.args.get("drive_time")
+    place_type = request.args.get("type")
     try:
         drive_time_sec = int(drive_time) * 60 if drive_time else None
     except ValueError:
         drive_time_sec = None
         drive_time = None
-    restaurants = get_restaurants(hidden=0, max_drive_time=drive_time_sec)
+    restaurants = get_restaurants(hidden=0, max_drive_time=drive_time_sec, place_type=place_type)
+    types = get_types()
     return render_template_string(
-        INDEX_HTML, restaurants=restaurants, drive_time=drive_time
+        INDEX_HTML, restaurants=restaurants, drive_time=drive_time, types=types, selected_type=place_type
     )
 
 @app.route("/random")
 def random_pick():
     drive_time = request.args.get("drive_time")
+    place_type = request.args.get("type")
     try:
         drive_time_sec = int(drive_time) * 60 if drive_time else None
     except ValueError:
         drive_time_sec = None
         drive_time = None
-    restaurants = get_restaurants(hidden=0, max_drive_time=drive_time_sec)
+    restaurants = get_restaurants(hidden=0, max_drive_time=drive_time_sec, place_type=place_type)
     pick = random.sample(restaurants, min(3, len(restaurants)))
     return render_template_string(
-        RANDOM_HTML, restaurants=pick, drive_time=drive_time
+        RANDOM_HTML, restaurants=pick, drive_time=drive_time, selected_type=place_type
     )
 
 @app.route("/hidden")
@@ -137,16 +152,25 @@ INDEX_HTML = """
     <label>最大移動時間(分):
         <input type="number" name="drive_time" value="{{ drive_time or '' }}" min="0">
     </label>
+    <label>タイプ:
+        <select name="type">
+            <option value="">-- 全て --</option>
+            {% for t in types %}
+            <option value="{{ t }}" {% if selected_type==t %}selected{% endif %}>{{ t }}</option>
+            {% endfor %}
+        </select>
+    </label>
     <button type="submit">絞り込み</button>
 </form>
 <form method="get" action="{{ url_for('random_pick') }}">
     <input type="hidden" name="drive_time" value="{{ drive_time or '' }}">
+    <input type="hidden" name="type" value="{{ selected_type or '' }}">
     <button type="submit">ランダムに3件表示</button>
 </form>
 <table id="mytable" class="display">
 <thead>
 <tr>
-<th>名前</th><th>住所</th><th>評価</th><th>距離(m)</th><th>移動時間(分)</th><th>最終訪店日</th><th>更新日</th><th>Google Maps</th><th>操作</th>
+<th>名前</th><th>住所</th><th>評価</th><th>タイプ</th><th>距離(m)</th><th>移動時間(分)</th><th>最終訪店日</th><th>更新日</th><th>Google Maps</th><th>操作</th>
 </tr>
 </thead>
 <tbody>
@@ -155,6 +179,7 @@ INDEX_HTML = """
 <td>{{ r['name'] }}</td>
 <td>{{ r['address'] }}</td>
 <td>{{ r['rating'] or '' }}</td>
+<td>{{ r['type'] or '' }}</td>
 <td>{{ "%.0f"|format(r['distance']) }}</td>
 <td>{{ "%.0f"|format((r['drive_time'] or 0)/60) if r['drive_time'] else '' }}</td>
 <td>
@@ -218,12 +243,13 @@ RANDOM_HTML = """
 <a href="{{ url_for('index', drive_time=drive_time) }}">一覧に戻る</a>
 <form method="get" action="{{ url_for('random_pick') }}">
     <input type="hidden" name="drive_time" value="{{ drive_time or '' }}">
+    <input type="hidden" name="type" value="{{ selected_type or '' }}">
     <button type="submit">もう一度ランダム3件を選ぶ</button>
 </form>
 <table border="1">
 <thead>
 <tr>
-<th>名前</th><th>住所</th><th>評価</th><th>距離(m)</th><th>移動時間(分)</th><th>最終訪店日</th><th>更新日</th><th>Google Maps</th><th>操作</th>
+<th>名前</th><th>住所</th><th>評価</th><th>タイプ</th><th>距離(m)</th><th>移動時間(分)</th><th>最終訪店日</th><th>更新日</th><th>Google Maps</th><th>操作</th>
 </tr>
 </thead>
 <tbody>
@@ -232,6 +258,7 @@ RANDOM_HTML = """
 <td>{{ r['name'] }}</td>
 <td>{{ r['address'] }}</td>
 <td>{{ r['rating'] or '' }}</td>
+<td>{{ r['type'] or '' }}</td>
 <td>{{ "%.0f"|format(r['distance']) }}</td>
 <td>{{ "%.0f"|format((r['drive_time'] or 0)/60) if r['drive_time'] else '' }}</td>
 <td>{{ r['last_visited'] or '' }}</td>
@@ -265,7 +292,7 @@ HIDDEN_HTML = """
 <table id="hidden_table" class="display">
 <thead>
 <tr>
-<th>名前</th><th>住所</th><th>移動時間(分)</th><th>最終訪店日</th><th>更新日</th><th>Google Maps</th><th>操作</th>
+<th>名前</th><th>住所</th><th>タイプ</th><th>移動時間(分)</th><th>最終訪店日</th><th>更新日</th><th>Google Maps</th><th>操作</th>
 </tr>
 </thead>
 <tbody>
@@ -273,6 +300,7 @@ HIDDEN_HTML = """
 <tr>
 <td>{{ r['name'] }}</td>
 <td>{{ r['address'] }}</td>
+<td>{{ r['type'] or '' }}</td>
 <td>{{ "%.0f"|format((r['drive_time'] or 0)/60) if r['drive_time'] else '' }}</td>
 <td>{{ r['last_visited'] or '' }}</td>
 <td>{{ r['updated_at'] or '' }}</td>
