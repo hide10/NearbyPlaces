@@ -24,11 +24,17 @@ def haversine(lat1, lng1, lat2, lng2):
     c = 2 * asin(sqrt(a))
     return R * c * 1000
 
-def get_restaurants(hidden=0):
+def get_restaurants(hidden=0, max_drive_time=None):
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
-    c.execute("SELECT * FROM restaurants WHERE hidden=?", (hidden,))
+    if max_drive_time is not None:
+        c.execute(
+            "SELECT * FROM restaurants WHERE hidden=? AND (drive_time IS NULL OR drive_time<=?)",
+            (hidden, max_drive_time),
+        )
+    else:
+        c.execute("SELECT * FROM restaurants WHERE hidden=?", (hidden,))
     rows = c.fetchall()
     conn.close()
     return [
@@ -48,14 +54,30 @@ def get_restaurants(hidden=0):
 
 @app.route("/")
 def index():
-    restaurants = get_restaurants(hidden=0)
-    return render_template_string(INDEX_HTML, restaurants=restaurants)
+    drive_time = request.args.get("drive_time")
+    try:
+        drive_time_sec = int(drive_time) * 60 if drive_time else None
+    except ValueError:
+        drive_time_sec = None
+        drive_time = None
+    restaurants = get_restaurants(hidden=0, max_drive_time=drive_time_sec)
+    return render_template_string(
+        INDEX_HTML, restaurants=restaurants, drive_time=drive_time
+    )
 
 @app.route("/random")
 def random_pick():
-    restaurants = get_restaurants(hidden=0)
+    drive_time = request.args.get("drive_time")
+    try:
+        drive_time_sec = int(drive_time) * 60 if drive_time else None
+    except ValueError:
+        drive_time_sec = None
+        drive_time = None
+    restaurants = get_restaurants(hidden=0, max_drive_time=drive_time_sec)
     pick = random.sample(restaurants, min(3, len(restaurants)))
-    return render_template_string(RANDOM_HTML, restaurants=pick)
+    return render_template_string(
+        RANDOM_HTML, restaurants=pick, drive_time=drive_time
+    )
 
 @app.route("/hidden")
 def show_hidden():
@@ -111,7 +133,14 @@ INDEX_HTML = """
 <body>
 <h2>レストラン一覧</h2>
 <a href="{{ url_for('show_hidden') }}">非表示リストを見る</a>
+<form method="get" action="{{ url_for('index') }}">
+    <label>最大移動時間(分):
+        <input type="number" name="drive_time" value="{{ drive_time or '' }}" min="0">
+    </label>
+    <button type="submit">絞り込み</button>
+</form>
 <form method="get" action="{{ url_for('random_pick') }}">
+    <input type="hidden" name="drive_time" value="{{ drive_time or '' }}">
     <button type="submit">ランダムに3件表示</button>
 </form>
 <table id="mytable" class="display">
@@ -186,8 +215,9 @@ RANDOM_HTML = """
 <head><meta charset="UTF-8"><title>ランダム3件</title></head>
 <body>
 <h2>ランダムに選ばれた3件</h2>
-<a href="{{ url_for('index') }}">一覧に戻る</a>
+<a href="{{ url_for('index', drive_time=drive_time) }}">一覧に戻る</a>
 <form method="get" action="{{ url_for('random_pick') }}">
+    <input type="hidden" name="drive_time" value="{{ drive_time or '' }}">
     <button type="submit">もう一度ランダム3件を選ぶ</button>
 </form>
 <table border="1">
